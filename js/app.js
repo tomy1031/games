@@ -8,7 +8,7 @@
   SFX.setSettings(settings);
 
   // ---------- screen routing ----------
-  var screens = { home: $("screen-home"), snake: $("screen-snake") };
+  var screens = { home: $("screen-home"), snake: $("screen-snake"), lumina: $("screen-lumina") };
   var current = "home";
   function show(name) {
     if (screens[current]) screens[current].classList.remove("is-active");
@@ -33,12 +33,18 @@
     var m = Math.floor(s / 60); s = s % 60;
     return m + ":" + (s < 10 ? "0" : "") + s;
   }
+  function fmtClock(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
   function refreshLives() {
     var lives = Storage.getLives();
     heartString(lives, $("hearts"));
     var t = Storage.nextLifeIn();
     $("life-timer").textContent = t > 0 ? "+♥ " + fmtTime(t) : "MAX";
     $("home-hi").textContent = Storage.getHighScore();
+    var lh = $("home-hi-lumina");
+    if (lh) lh.textContent = fmtClock(Storage.getHighScore("lumina"));
   }
   function startLifeTicker() { if (!lifeInterval) lifeInterval = setInterval(refreshLives, 1000); }
 
@@ -53,13 +59,12 @@
       return;
     }
     SFX.init(); SFX.click();
-    if (card.dataset.game === "snake") {
-      if (Storage.getLives() <= 0) {
-        alert("ライフがありません。少し待つと回復します（または星⭐を5個集めると+1）。");
-        return;
-      }
-      launchSnake();
+    if (Storage.getLives() <= 0) {
+      alert("ライフがありません。少し待つと回復します。");
+      return;
     }
+    if (card.dataset.game === "snake") launchSnake();
+    else if (card.dataset.game === "lumina") launchLumina();
   });
 
   // show how many games are playable vs. total in the hub
@@ -148,8 +153,8 @@
     });
   }
 
-  function runCountdown(done) {
-    var el = $("countdown"); el.hidden = false;
+  function runCountdown(done, elId) {
+    var el = $(elId || "countdown"); el.hidden = false;
     var seq = ["3", "2", "1", "GO!"]; var i = 0;
     function tick() {
       if (i >= seq.length) { el.hidden = true; el.innerHTML = ""; done(); return; }
@@ -196,6 +201,116 @@
     show("home"); refreshLives();
   });
 
+  // ====================================================================
+  //  Lumina Survivor wiring
+  // ====================================================================
+  var lmWeaponsEl = $("lm-weapons");
+  function lmUpdateStats(s) {
+    $("lm-time").textContent = fmtClock(s.time);
+    $("lm-kills").textContent = s.kills;
+    $("lm-level").textContent = "Lv " + s.level;
+    $("lm-xpfill").style.width = Math.min(100, (s.xp / s.xpNext) * 100) + "%";
+    var hpPct = Math.max(0, (s.hp / s.hpMax) * 100);
+    $("lm-hpfill").style.width = hpPct + "%";
+    $("lm-hpfill").style.background = hpPct < 30
+      ? "linear-gradient(90deg,#ff5d7a,#ff9a3d)"
+      : "linear-gradient(90deg,#38e1c9,#6c8cff)";
+    $("lm-hptext").textContent = Math.ceil(s.hp) + " / " + s.hpMax;
+  }
+  function lmUpdateWeapons(list) {
+    var html = "";
+    for (var i = 0; i < list.length; i++) {
+      html += '<span class="lm-wchip" title="' + escapeHtml(list[i].name) + '">' +
+        '<b>' + list[i].icon + '</b><i>' + list[i].level + '</i></span>';
+    }
+    lmWeaponsEl.innerHTML = html;
+  }
+  function lmShowLevelUp(choices, pick) {
+    var box = $("lm-choices");
+    box.innerHTML = "";
+    choices.forEach(function (c) {
+      var btn = document.createElement("button");
+      btn.className = "lm-choice" + (c.isNew ? " is-new" : "");
+      btn.innerHTML = '<span class="lm-choice-ic">' + c.icon + '</span>' +
+        '<span class="lm-choice-tx"><b>' + escapeHtml(c.name) + '</b>' +
+        '<i>' + escapeHtml(c.desc) + '</i></span>' +
+        '<span class="lm-choice-lv">' + escapeHtml(c.sub) + '</span>';
+      btn.addEventListener("click", function () {
+        SFX.click(); vibrate(15);
+        $("lm-levelup").hidden = true;
+        pick(c.id);
+      });
+      box.appendChild(btn);
+    });
+    $("lm-levelup").hidden = false;
+  }
+
+  function launchLumina() {
+    show("lumina");
+    if (settings.music) SFX.startMusic();
+    runCountdown(function () {
+      LuminaGame.start($("lumina-canvas"), {
+        onStats: lmUpdateStats,
+        onWeapons: lmUpdateWeapons,
+        onLevelUp: lmShowLevelUp,
+        onHurt: function () { vibrate(40); },
+        onBoss: function () { vibrate([30, 50, 30]); },
+        onGameOver: function (res) { lmEndGame(res); }
+      });
+      startLifeTicker();
+    }, "lm-countdown");
+  }
+
+  function lmEndGame(res) {
+    var isBest = Storage.submitScore(res.time, "lumina");
+    Storage.spendLife();
+    SFX.stopMusic();
+    var lives = Storage.getLives();
+    $("lm-result-title").textContent = "夜に呑まれた…";
+    $("lm-result-time").textContent = fmtClock(res.time);
+    $("lm-result-level").textContent = res.level;
+    $("lm-result-kills").textContent = res.kills;
+    $("lm-result-best").textContent = isBest ? "🎉 自己ベスト更新！" : "BEST " + fmtClock(Storage.getHighScore("lumina"));
+    heartString(lives, $("lm-result-hearts"));
+    var retry = $("lm-retry");
+    if (lives > 0) {
+      retry.disabled = false; retry.textContent = "❤ もう一度（ライフ -1）";
+      $("lm-result-note").textContent = "";
+    } else {
+      retry.disabled = true; retry.textContent = "ライフ切れ";
+      $("lm-result-note").textContent = "回復まで " + fmtTime(Storage.nextLifeIn());
+    }
+    vibrate([40, 60, 40]);
+    $("lm-result").hidden = false;
+    refreshLives();
+  }
+
+  $("lm-retry").addEventListener("click", function () {
+    if (Storage.getLives() <= 0) return;
+    SFX.click();
+    $("lm-result").hidden = true;
+    launchLumina();
+  });
+  $("lm-home").addEventListener("click", function () {
+    SFX.click(); LuminaGame.stop(); SFX.stopMusic();
+    $("lm-result").hidden = true;
+    show("home"); refreshLives();
+  });
+  function lmPause() {
+    if (!LuminaGame.isPlaying() || LuminaGame.isPaused()) return;
+    SFX.click(); LuminaGame.pause(); $("lm-pause-overlay").hidden = false; SFX.stopMusic();
+  }
+  $("lm-pause").addEventListener("click", lmPause);
+  $("lm-back").addEventListener("click", lmPause);
+  $("lm-resume").addEventListener("click", function () {
+    SFX.click(); $("lm-pause-overlay").hidden = true; LuminaGame.resume();
+    if (settings.music) SFX.startMusic();
+  });
+  $("lm-quit").addEventListener("click", function () {
+    SFX.click(); LuminaGame.stop(); SFX.stopMusic();
+    $("lm-pause-overlay").hidden = true; show("home"); refreshLives();
+  });
+
   // ---------- pause ----------
   $("btn-pause").addEventListener("click", function () {
     SFX.click(); SnakeGame.pause(); $("pause-overlay").hidden = false; SFX.stopMusic();
@@ -224,8 +339,11 @@
 
   // pause when tab hidden
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden && current === "snake" && SnakeGame.isPlaying()) {
+    if (!document.hidden) return;
+    if (current === "snake" && SnakeGame.isPlaying()) {
       SnakeGame.pause(); $("pause-overlay").hidden = false; SFX.stopMusic();
+    } else if (current === "lumina" && LuminaGame.isPlaying() && !LuminaGame.isPaused()) {
+      LuminaGame.pause(); $("lm-pause-overlay").hidden = false; SFX.stopMusic();
     }
   });
 
