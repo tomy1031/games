@@ -1,5 +1,5 @@
 /* Service worker: cache-first offline support for the whole app shell. */
-var CACHE = "pocket-arcade-v3";
+var CACHE = "pocket-arcade-v4";
 var ASSETS = [
   "./",
   "./index.html",

@@ -11,7 +11,8 @@
   var TURN_RATE = 0.16;
   var START_MASS = 12;
   var MIN_MASS = 8;
-  var FOOD_TARGET = 1300;
+  var FOOD_TARGET = 1300;       // scattered background food kept around this many
+  var FOOD_CAP = 3200;          // hard ceiling incl. corpse drops (far pellets culled)
   var TARGET_POP = 28;          // total snakes incl. player
   var CLAIM_MS = 5000;          // dropped kill-food reserved for the killer
   var MAX_SEGS = 280;
@@ -68,7 +69,9 @@
       boosting: false, invUntil: performance.now() + 1600,
       shieldUntil: 0, magnetUntil: 0, speedUntil: 0,
       ai: { jitter: rand(0, 6.28), role: opts.isPlayer ? "player" : pickRole(),
-            goal: null, goalUntil: 0, target: null }
+            goal: null, goalUntil: 0, target: null,
+            weaveAmp: rand(0.35, 0.75), weaveFreq: rand(340, 640),
+            coilUntil: 0, coilDir: Math.random() < 0.5 ? -1 : 1 }
     };
     // Coiled start: every segment begins stacked at the head, then the body
     // uncoils/extends outward as the snake moves.
@@ -88,22 +91,17 @@
 
   var idSeq = 1;
   function spawnAI(massOverride) {
-    var pm = player ? player.mass : START_MASS;
     var mass;
     if (massOverride != null) {
       mass = massOverride;
     } else {
-      // keep at least a few snakes bigger than the player so there's always a
-      // challenge, then a broad small->giant distribution for a lively board.
-      var rivals = 0;
-      for (var i = 0; i < snakes.length; i++)
-        if (!snakes[i].isPlayer && !snakes[i].dead && snakes[i].mass >= pm) rivals++;
+      // Replacements are mostly small fodder so the board top opens up over time
+      // and the player can actually climb by eating. Only rarely a sizable one.
       var roll = Math.random();
-      if (rivals < 3) mass = Math.max(pm * rand(1.05, 1.4), rand(60, 700));
-      else if (roll < 0.45) mass = rand(12, 300);
-      else if (roll < 0.75) mass = rand(300, 4000);
-      else if (roll < 0.92) mass = rand(4000, 15000);
-      else mass = rand(15000, APEX_MAX);
+      if (roll < 0.7) mass = rand(10, 150);
+      else if (roll < 0.9) mass = rand(150, 1500);
+      else if (roll < 0.99) mass = rand(1500, 8000);
+      else mass = rand(8000, 20000);
     }
     mass = clamp(mass, 12, APEX_MAX);
     var p = spawnPos(player, Math.min(1000, WORLD_R * 0.32));
@@ -133,10 +131,14 @@
   }
   function dropCorpse(s, claimerId) {
     var n = s.segs.length;
-    for (var i = 0; i < n; i += 2) {
+    // cap total drops (~50) so a giant doesn't flood the field, and scatter
+    // each pellet widely so the loot spreads out instead of piling up.
+    var step = Math.max(2, Math.ceil(n / 50));
+    for (var i = 0; i < n; i += step) {
       var seg = s.segs[i];
-      foods.push(makeFood(seg.x + rand(-6, 6), seg.y + rand(-6, 6),
-        2 + Math.random() * 2, s.hue, claimerId));
+      var spread = 50 + s.thickness * 2.2;
+      foods.push(makeFood(seg.x + rand(-spread, spread), seg.y + rand(-spread, spread),
+        2 + Math.random() * 3, s.hue, claimerId));
     }
   }
 
@@ -250,12 +252,19 @@
     var straight = dangerOnHeading(s, s.angle, look);
     var desired;
 
+    var nearWall = hypot(s.x, s.y) > WORLD_R * 0.86;
+
     if (straight > 0.25) {
       // obstacle ahead: steer toward the clearer side
       var probe = 0.5;
       var left = dangerOnHeading(s, s.angle - probe, look);
       var right = dangerOnHeading(s, s.angle + probe, look);
       desired = s.angle + (left < right ? -probe : probe) * (1 + straight);
+      s.boosting = false;
+      s.ai.coilUntil = 0;
+    } else if (now < s.ai.coilUntil && !nearWall) {
+      // coiling: keep turning one way so the body loops over itself
+      desired = s.angle + s.ai.coilDir * 0.5;
       s.boosting = false;
     } else {
       if (!s.ai.goal || now > s.ai.goalUntil) pickGoal(s, now);
@@ -265,13 +274,16 @@
       // graze food encountered en route
       var f = nearestEligibleFood(s);
       if (f && hypot(f.x - s.x, f.y - s.y) < 240) desired = Math.atan2(f.y - s.y, f.x - s.x);
-      // organic weave
-      desired += Math.sin(now / 700 + s.ai.jitter) * 0.18;
-      // peel away from the wall
-      if (hypot(s.x, s.y) > WORLD_R * 0.86) { desired = Math.atan2(-s.y, -s.x); s.ai.goal = null; }
+      // slithering weave (two waves) so the path curves instead of running straight
+      desired += Math.sin(now / s.ai.weaveFreq + s.ai.jitter) * s.ai.weaveAmp
+               + Math.sin(now / (s.ai.weaveFreq * 2.3) + s.ai.jitter * 1.7) * (s.ai.weaveAmp * 0.5);
+      // occasionally start a coil
+      if (!nearWall && Math.random() < 0.004) { s.ai.coilUntil = now + rand(900, 2200); s.ai.coilDir = Math.random() < 0.5 ? -1 : 1; }
       // hunters dash across the field in bursts
       s.boosting = s.ai.role === "hunter" && s.mass > 40 && Math.sin(now / 600 + s.id) > 0.6;
     }
+    // peel away from the wall (overrides everything)
+    if (nearWall) { desired = Math.atan2(-s.y, -s.x); s.ai.goal = null; s.ai.coilUntil = 0; }
     s.targetAngle = desired;
   }
 
@@ -443,8 +455,16 @@
       for (var d = snakes.length - 1; d >= 0; d--) if (snakes[d].dead && snakes[d] !== player) snakes.splice(d, 1);
 
       // replenish food & powerups
-      if (foods.length < FOOD_TARGET && Math.random() < 0.5) scatterFood(1);
-      if (foods.length > FOOD_TARGET * 1.8) foods.splice(0, 40); // cap drift
+      if (foods.length < FOOD_TARGET) scatterFood(Math.random() < 0.5 ? 2 : 1);
+      // Cap total food, but only ever remove pellets that are FAR from the player
+      // so scattered/visible food never vanishes when corpses are dropped.
+      if (foods.length > FOOD_CAP) {
+        var excess = foods.length - FOOD_CAP;
+        for (var fi = 0; fi < foods.length && excess > 0;) {
+          if (hypot(foods[fi].x - player.x, foods[fi].y - player.y) > 1600) { foods.splice(fi, 1); excess--; }
+          else fi++;
+        }
+      }
       if (powerups.length < 6 && Math.random() < 0.004) makePowerup();
       // expire stale claims naturally handled by timestamp
 
