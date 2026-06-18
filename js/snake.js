@@ -5,16 +5,18 @@
   "use strict";
 
   // ---------- tunables ----------
-  var WORLD_R = 2300;
-  var BASE_SPEED = 2.7;
+  var WORLD_R = 3900;
+  var BASE_SPEED = 2.8;
   var BOOST_MULT = 1.9;
   var TURN_RATE = 0.16;
   var START_MASS = 12;
   var MIN_MASS = 8;
-  var FOOD_TARGET = 620;
-  var TARGET_POP = 14;          // total snakes incl. player
+  var FOOD_TARGET = 1300;
+  var TARGET_POP = 28;          // total snakes incl. player
   var CLAIM_MS = 5000;          // dropped kill-food reserved for the killer
-  var MAX_SEGS = 260;
+  var MAX_SEGS = 280;
+  var APEX_MIN = 24000;         // size of the biggest snakes on the board
+  var APEX_MAX = 27000;
   var COMBO_WINDOW = 1100;      // ms to keep an eating combo alive
   var STARS_PER_LIFE = 5;
 
@@ -53,22 +55,25 @@
   function segCountOf(mass) { return clamp(Math.round(12 + mass * 0.7), 12, MAX_SEGS); }
   function colorFor(hue, l) { return "hsl(" + hue + ",85%," + (l || 60) + "%)"; }
 
+  function pickRole() { var r = Math.random(); return r < 0.45 ? "grazer" : r < 0.75 ? "roamer" : "hunter"; }
+
   // ---------- snake factory ----------
   function makeSnake(opts) {
     var mass = opts.mass;
     var s = {
       id: opts.id, name: opts.name, hue: opts.hue, isPlayer: !!opts.isPlayer,
       x: opts.x, y: opts.y, angle: opts.angle, targetAngle: opts.angle,
-      mass: mass, speed: BASE_SPEED, thickness: thicknessOf(mass),
-      gap: thicknessOf(mass) * 0.42, segs: [], dead: false,
+      mass: mass, speed: BASE_SPEED, speedMul: rand(0.9, 1.16),
+      thickness: thicknessOf(mass), gap: thicknessOf(mass) * 0.42, segs: [], dead: false,
       boosting: false, invUntil: performance.now() + 1600,
       shieldUntil: 0, magnetUntil: 0, speedUntil: 0,
-      ai: { wander: opts.angle, jitter: rand(0, 6.28), aggression: rand(0.0, 0.5),
-            decision: 0, target: null, retargetAt: 0 }
+      ai: { jitter: rand(0, 6.28), role: opts.isPlayer ? "player" : pickRole(),
+            goal: null, goalUntil: 0, target: null }
     };
+    // Coiled start: every segment begins stacked at the head, then the body
+    // uncoils/extends outward as the snake moves.
     var n = segCountOf(mass);
-    for (var i = 0; i < n; i++) s.segs.push({ x: opts.x - Math.cos(opts.angle) * i * s.gap,
-                                              y: opts.y - Math.sin(opts.angle) * i * s.gap });
+    for (var i = 0; i < n; i++) s.segs.push({ x: opts.x, y: opts.y });
     return s;
   }
 
@@ -82,24 +87,26 @@
   }
 
   var idSeq = 1;
-  function spawnAI() {
+  function spawnAI(massOverride) {
     var pm = player ? player.mass : START_MASS;
-    // count current rivals near or above the player
-    var rivals = 0;
-    for (var i = 0; i < snakes.length; i++)
-      if (!snakes[i].isPlayer && !snakes[i].dead && snakes[i].mass >= pm * 0.8) rivals++;
     var mass;
-    if (rivals < 2) {
-      // guarantee a challenger of comparable-or-bigger size (but always beatable)
-      mass = pm * rand(0.9, 1.35) + rand(0, 6);
+    if (massOverride != null) {
+      mass = massOverride;
     } else {
+      // keep at least a few snakes bigger than the player so there's always a
+      // challenge, then a broad small->giant distribution for a lively board.
+      var rivals = 0;
+      for (var i = 0; i < snakes.length; i++)
+        if (!snakes[i].isPlayer && !snakes[i].dead && snakes[i].mass >= pm) rivals++;
       var roll = Math.random();
-      if (roll < 0.5) mass = rand(8, Math.max(14, pm * 0.5));
-      else if (roll < 0.85) mass = rand(pm * 0.4, pm * 0.85);
-      else mass = pm * rand(0.85, 1.2);
+      if (rivals < 3) mass = Math.max(pm * rand(1.05, 1.4), rand(60, 700));
+      else if (roll < 0.45) mass = rand(12, 300);
+      else if (roll < 0.75) mass = rand(300, 4000);
+      else if (roll < 0.92) mass = rand(4000, 15000);
+      else mass = rand(15000, APEX_MAX);
     }
-    mass = clamp(mass, 8, Math.max(40, pm * 1.4));
-    var p = spawnPos(player, 760);
+    mass = clamp(mass, 12, APEX_MAX);
+    var p = spawnPos(player, Math.min(1000, WORLD_R * 0.32));
     var s = makeSnake({
       id: idSeq++, name: NAMES[(idSeq * 7) % NAMES.length], hue: HUES[idSeq % HUES.length],
       x: p.x, y: p.y, angle: p.a + Math.PI, mass: mass
@@ -158,7 +165,14 @@
       x: 0, y: 0, angle: rand(0, 6.28), mass: START_MASS });
     player.invUntil = performance.now() + 2200;
     snakes.push(player);
-    for (var k = 0; k < TARGET_POP - 1; k++) spawnAI();
+    // Seed an initial leaderboard: an apex snake near 27000, falling off to
+    // a long tail of small ones.
+    for (var k = 0; k < TARGET_POP - 1; k++) {
+      var m = (k === 0)
+        ? rand(APEX_MIN, APEX_MAX)
+        : clamp(rand(APEX_MIN, APEX_MAX) * Math.pow(0.72, k) * rand(0.8, 1.15), 12, APEX_MAX);
+      spawnAI(m);
+    }
     cam.x = player.x; cam.y = player.y; cam.zoom = cam.targetZoom = 1;
   }
 
@@ -196,45 +210,69 @@
     return danger;
   }
 
-  function updateAI(s, now) {
-    var look = 60 + s.thickness * 3 + (s.boosting ? 60 : 0);
-    var straight = dangerOnHeading(s, s.angle, look);
-    var desired = s.angle;
+  // pick a nearby snake the hunter can plausibly threaten
+  function pickPrey(s) {
+    var best = null, bd = 1e9;
+    for (var i = 0; i < snakes.length; i++) {
+      var t = snakes[i];
+      if (t === s || t.dead || t.mass > s.mass * 1.1) continue;
+      var d = hypot(t.x - s.x, t.y - s.y);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return bd < 1500 ? best : null;
+  }
 
-    if (straight > 0.3) {
-      // steer toward the clearer side
-      var probe = 0.45;
+  // choose a long-range destination so snakes traverse the whole arena
+  function pickGoal(s, now) {
+    var gx = null, gy = null;
+    if (s.ai.role === "hunter" && Math.random() < 0.6) {
+      var prey = pickPrey(s);
+      if (prey) {
+        var lead = 90 + Math.random() * 140;
+        gx = prey.x + Math.cos(prey.angle) * lead;
+        gy = prey.y + Math.sin(prey.angle) * lead;
+      }
+    }
+    if (gx == null && s.ai.role === "grazer" && foods.length) {
+      var f = foods[(Math.random() * foods.length) | 0];
+      gx = f.x; gy = f.y;
+    }
+    if (gx == null) { // roamer / fallback: a random far point in the arena
+      var a = rand(0, 6.28), r = Math.sqrt(Math.random()) * WORLD_R * 0.9;
+      gx = Math.cos(a) * r; gy = Math.sin(a) * r;
+    }
+    s.ai.goal = { x: gx, y: gy };
+    s.ai.goalUntil = now + rand(2200, 5500);
+  }
+
+  function updateAI(s, now) {
+    var look = 60 + s.thickness * 3 + (s.boosting ? 80 : 0);
+    var straight = dangerOnHeading(s, s.angle, look);
+    var desired;
+
+    if (straight > 0.25) {
+      // obstacle ahead: steer toward the clearer side
+      var probe = 0.5;
       var left = dangerOnHeading(s, s.angle - probe, look);
       var right = dangerOnHeading(s, s.angle + probe, look);
       desired = s.angle + (left < right ? -probe : probe) * (1 + straight);
+      s.boosting = false;
     } else {
-      // seek food / mild aggression / wander
-      var f = (s.ai.target && foods.indexOf(s.ai.target) >= 0) ? s.ai.target : null;
-      if (!f || now > s.ai.retargetAt) { f = nearestEligibleFood(s); s.ai.target = f; s.ai.retargetAt = now + rand(500, 1200); }
-      if (f) {
-        desired = Math.atan2(f.y - s.y, f.x - s.x) + Math.sin(now / 600 + s.ai.jitter) * 0.25;
-      } else {
-        s.ai.wander += rand(-0.2, 0.2);
-        desired = s.ai.wander;
-      }
-      // gentle pull back toward center if wandering near the edge
-      if (hypot(s.x, s.y) > WORLD_R * 0.8) desired = Math.atan2(-s.y, -s.x);
-      // limited aggression: bigger AI may cut toward a nearby smaller target
-      if (s.ai.aggression > 0.3) {
-        for (var i = 0; i < snakes.length; i++) {
-          var t = snakes[i];
-          if (t === s || t.dead || t.mass > s.mass * 0.85) continue;
-          var dist = hypot(t.x - s.x, t.y - s.y);
-          if (dist < 240) {
-            var lead = Math.atan2((t.y + Math.sin(t.angle) * 50) - s.y, (t.x + Math.cos(t.angle) * 50) - s.x);
-            desired = lead; break;
-          }
-        }
-      }
+      if (!s.ai.goal || now > s.ai.goalUntil) pickGoal(s, now);
+      var g = s.ai.goal;
+      if (hypot(g.x - s.x, g.y - s.y) < 200) { pickGoal(s, now); g = s.ai.goal; }
+      desired = Math.atan2(g.y - s.y, g.x - s.x);
+      // graze food encountered en route
+      var f = nearestEligibleFood(s);
+      if (f && hypot(f.x - s.x, f.y - s.y) < 240) desired = Math.atan2(f.y - s.y, f.x - s.x);
+      // organic weave
+      desired += Math.sin(now / 700 + s.ai.jitter) * 0.18;
+      // peel away from the wall
+      if (hypot(s.x, s.y) > WORLD_R * 0.86) { desired = Math.atan2(-s.y, -s.x); s.ai.goal = null; }
+      // hunters dash across the field in bursts
+      s.boosting = s.ai.role === "hunter" && s.mass > 40 && Math.sin(now / 600 + s.id) > 0.6;
     }
     s.targetAngle = desired;
-    // AI boosts occasionally when chasing & big enough
-    s.boosting = s.mass > 30 && s.ai.aggression > 0.35 && straight < 0.1 && Math.sin(now / 800 + s.id) > 0.85;
   }
 
   // ---------- physics ----------
@@ -246,7 +284,7 @@
     var d = angleDiff(s.targetAngle, s.angle);
     s.angle += clamp(d, -maxTurn, maxTurn) * dt;
 
-    var sp = BASE_SPEED * (1 - clamp(s.mass / 2600, 0, 0.32));
+    var sp = BASE_SPEED * s.speedMul * (1 - clamp(s.mass / 9000, 0, 0.34));
     if (now < s.speedUntil) sp *= 1.4;
     var boosting = s.boosting && s.mass > MIN_MASS + 4;
     if (boosting) {
@@ -365,7 +403,7 @@
           if (!invincible && s.mass <= o.mass) { killSnake(s, o.id, now); break; }
           continue;
         }
-        var step = 2;
+        var step = (s.isPlayer || o.isPlayer) ? 2 : 5;
         var hit = false;
         for (var k = 4; k < o.segs.length; k += step) {
           var seg = o.segs[k];
@@ -479,7 +517,14 @@
     drawPowerups(now);
     // draw snakes sorted so the player & big ones render on top
     var order = snakes.slice().sort(function (a, b) { return a.mass - b.mass; });
-    for (var i = 0; i < order.length; i++) if (!order[i].dead || order[i] === player) drawSnake(order[i], now);
+    var viewR = hypot(cw, ch) / 2 / cam.zoom + 100;
+    for (var i = 0; i < order.length; i++) {
+      var sk = order[i];
+      if (sk.dead && sk !== player) continue;
+      // cull snakes whose whole body is off-screen
+      if (!sk.isPlayer && hypot(sk.x - cam.x, sk.y - cam.y) - sk.segs.length * sk.gap > viewR) continue;
+      drawSnake(sk, now);
+    }
     drawParticles();
 
     drawMinimap();
@@ -686,9 +731,10 @@
       player.dead = false; player.mass = START_MASS; player.x = p.x; player.y = p.y;
       player.angle = player.targetAngle = p.a; player.invUntil = performance.now() + 2400;
       player.shieldUntil = player.magnetUntil = player.speedUntil = 0;
+      // coiled start: body begins stacked at the head and uncoils as you move
       player.segs = [];
       var n = segCountOf(START_MASS);
-      for (var i = 0; i < n; i++) player.segs.push({ x: p.x - Math.cos(p.a) * i * player.gap, y: p.y - Math.sin(p.a) * i * player.gap });
+      for (var i = 0; i < n; i++) player.segs.push({ x: p.x, y: p.y });
       cam.x = p.x; cam.y = p.y;
       combo = 0; comboT = 0;
       phase = "play"; paused = false; running = true; lastT = 0;
