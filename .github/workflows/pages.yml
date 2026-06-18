@@ -28,6 +28,8 @@ jobs:
       # Enables Pages (source = GitHub Actions) automatically on first run.
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # Upload the whole repo root as the static site (index.html is at root).
       - name: Upload artifact
