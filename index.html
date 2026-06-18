@@ -35,12 +35,17 @@
       <p class="subtitle">オフラインで遊べる ミニゲーム集</p>
     </div>
 
-    <div class="game-list" id="game-list">
-      <button class="game-card" data-game="snake">
+    <div class="menu-head">
+      <h2>ゲームをえらぶ</h2>
+      <span id="game-count"></span>
+    </div>
+
+    <div class="game-grid" id="game-list">
+      <button class="game-card featured" data-game="snake">
         <div class="game-card-art art-snake" aria-hidden="true"></div>
         <div class="game-card-body">
           <h2>スネークアリーナ</h2>
-          <p>くねくね伸ばして世界一を目指す</p>
+          <p>くねくね伸ばして世界一を目指す slither 系バトル</p>
           <div class="game-card-meta">
             <span class="hi">BEST <b id="home-hi">0</b></span>
             <span class="play-pill">▶ あそぶ</span>
@@ -49,11 +54,28 @@
       </button>
 
       <div class="game-card is-locked" aria-disabled="true">
-        <div class="game-card-art art-soon" aria-hidden="true">SOON</div>
-        <div class="game-card-body">
-          <h2>つぎのゲーム</h2>
-          <p>準備中… おたのしみに</p>
-        </div>
+        <div class="game-card-art art-1" aria-hidden="true"><span class="tile-emoji">🧱</span><span class="soon-badge">SOON</span></div>
+        <div class="game-card-body"><h3>ブロックスマッシュ</h3><p>準備中</p></div>
+      </div>
+
+      <div class="game-card is-locked" aria-disabled="true">
+        <div class="game-card-art art-2" aria-hidden="true"><span class="tile-emoji">🟦</span><span class="soon-badge">SOON</span></div>
+        <div class="game-card-body"><h3>フォーリンブロック</h3><p>準備中</p></div>
+      </div>
+
+      <div class="game-card is-locked" aria-disabled="true">
+        <div class="game-card-art art-3" aria-hidden="true"><span class="tile-emoji">🔢</span><span class="soon-badge">SOON</span></div>
+        <div class="game-card-body"><h3>ナンバーマージ</h3><p>準備中</p></div>
+      </div>
+
+      <div class="game-card is-locked" aria-disabled="true">
+        <div class="game-card-art art-4" aria-hidden="true"><span class="tile-emoji">🧠</span><span class="soon-badge">SOON</span></div>
+        <div class="game-card-body"><h3>メモリーフリップ</h3><p>準備中</p></div>
+      </div>
+
+      <div class="game-card is-locked" aria-disabled="true">
+        <div class="game-card-art art-5" aria-hidden="true"><span class="tile-emoji">🎯</span><span class="soon-badge">SOON</span></div>
+        <div class="game-card-body"><h3>リズムタップ</h3><p>準備中</p></div>
       </div>
     </div>
 
