@@ -15,6 +15,10 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* The [hidden] attribute must always win over component display rules below
+   (.overlay/.toast/.countdown set display, which would otherwise override it). */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -43,9 +47,12 @@ body { position: fixed; inset: 0; }
 }
 .screen.is-active { display: flex; opacity: 1; }
 
+/* The hub can list many games, so let it scroll if it overflows. */
+#screen-home { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
 /* ---------- background dots ---------- */
 .bg-dots {
-  position: absolute;
+  position: fixed;
   inset: -20%;
   background-color: var(--bg);
   background-image:
@@ -89,11 +96,11 @@ body { position: fixed; inset: 0; }
 .home-hero {
   position: relative; z-index: 2;
   text-align: center;
-  margin-top: clamp(20px, 7vh, 60px);
+  margin-top: clamp(16px, 4vh, 40px);
 }
 .logo-mark {
-  width: 92px; height: 92px;
-  margin: 0 auto 14px;
+  width: 80px; height: 80px;
+  margin: 0 auto 12px;
   border-radius: 26px;
   background: linear-gradient(145deg, #1b2440, #0a0f1f);
   box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06);
@@ -127,33 +134,55 @@ body { position: fixed; inset: 0; }
 .title span { display: block; background: inherit; -webkit-background-clip: text; background-clip: text; }
 .subtitle { color: var(--muted); margin: 12px 0 0; font-size: 14px; }
 
-.game-list {
+.menu-head {
   position: relative; z-index: 2;
-  margin-top: auto;
-  padding: 0 16px;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 24px 18px 10px;
+}
+.menu-head h2 { margin: 0; font-size: 16px; }
+.menu-head span { font-size: 11px; color: var(--muted); }
+
+.game-grid {
+  position: relative; z-index: 2;
+  padding: 0 14px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 .game-card {
-  display: flex; align-items: stretch; gap: 14px;
+  display: flex; flex-direction: column;
   background: var(--panel);
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 10px;
   text-align: left;
   color: var(--ink);
   cursor: pointer;
-  transition: transform 0.14s, box-shadow 0.2s;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  overflow: hidden;
+  transition: transform 0.14s, box-shadow 0.2s, border-color 0.2s;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.32);
 }
-.game-card:active { transform: scale(0.98); }
-.game-card.is-locked { opacity: 0.5; cursor: default; }
+.game-card:active { transform: scale(0.97); }
+.game-card.is-locked { cursor: default; }
+.game-card.is-locked:active { transform: none; }
+
+/* Featured game spans the full row and lays out horizontally. */
+.game-card.featured {
+  grid-column: 1 / -1;
+  flex-direction: row; align-items: stretch; gap: 14px;
+  padding: 12px;
+  border-color: rgba(56,225,201,0.35);
+}
+
 .game-card-art {
-  width: 76px; flex: 0 0 76px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #0c1226;
   position: relative; overflow: hidden;
   display: grid; place-items: center;
 }
+.game-card:not(.featured) .game-card-art { width: 100%; aspect-ratio: 16 / 11; }
+.game-card.featured .game-card-art { width: 96px; flex: 0 0 96px; }
+
 .art-snake {
   background:
     radial-gradient(circle at 70% 30%, rgba(108,140,255,0.25), transparent 55%),
@@ -161,17 +190,33 @@ body { position: fixed; inset: 0; }
 }
 .art-snake::before {
   content: "";
-  position: absolute; left: 14px; top: 20px;
+  position: absolute; left: 18px; top: 24px;
   width: 18px; height: 18px; border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #9bffe9, #38e1c9);
   box-shadow:
     14px 8px 0 -2px #ffd24a, 26px 18px 0 -4px #ff8ab3,
     36px 30px 0 -6px #6c8cff, 42px 44px 0 -8px #38e1c9;
 }
-.art-soon { color: var(--muted); font-weight: 800; letter-spacing: 2px; font-size: 13px; }
-.game-card-body { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; }
-.game-card-body h2 { margin: 0; font-size: 17px; }
-.game-card-body p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+.tile-emoji { font-size: 30px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.45)); }
+.art-1 { background: linear-gradient(135deg, #3a2160, #0c1226); }
+.art-2 { background: linear-gradient(135deg, #1f3f63, #0c1226); }
+.art-3 { background: linear-gradient(135deg, #5e2143, #0c1226); }
+.art-4 { background: linear-gradient(135deg, #1f5e49, #0c1226); }
+.art-5 { background: linear-gradient(135deg, #604e1f, #0c1226); }
+.soon-badge {
+  position: absolute; top: 6px; right: 6px;
+  font-size: 8.5px; letter-spacing: 1px; font-weight: 800;
+  background: rgba(255,255,255,0.14); color: var(--muted);
+  padding: 2px 6px; border-radius: 6px;
+}
+
+.game-card-body { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; padding-top: 8px; }
+.game-card.featured .game-card-body { padding-top: 0; }
+.game-card-body h2, .game-card-body h3 { margin: 0; font-size: 14.5px; }
+.game-card.featured .game-card-body h2 { font-size: 18px; }
+.game-card.is-locked .game-card-body h3 { color: var(--muted); }
+.game-card-body p { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-card.featured .game-card-body p { white-space: normal; }
 .game-card-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .game-card-meta .hi { font-size: 12px; color: var(--muted); }
 .game-card-meta .hi b { color: var(--gold); }
@@ -179,6 +224,15 @@ body { position: fixed; inset: 0; }
   background: linear-gradient(120deg, var(--accent), var(--accent2));
   color: #04122a; font-weight: 800; font-size: 13px;
   padding: 6px 12px; border-radius: 999px;
+}
+.soon-pill { font-size: 11px; color: var(--muted); margin-top: 6px; display: inline-block; }
+.game-card.nudge { animation: nudge 0.4s ease; }
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
 }
 
 .home-foot {
@@ -367,5 +421,6 @@ body { position: fixed; inset: 0; }
 .toast #btn-install-x { background: transparent; color: var(--muted); padding: 8px; font-size: 16px; }
 
 @media (min-width: 720px) {
-  .game-list { max-width: 520px; margin-left: auto; margin-right: auto; }
+  .menu-head, .game-grid { max-width: 620px; margin-left: auto; margin-right: auto; }
+  .game-grid { grid-template-columns: repeat(3, 1fr); }
 }

@@ -44,8 +44,14 @@
 
   // ---------- home interactions ----------
   $("game-list").addEventListener("click", function (e) {
-    var card = e.target.closest(".game-card[data-game]");
+    var card = e.target.closest(".game-card");
     if (!card) return;
+    // "Coming soon" tiles: give a small nudge instead of launching.
+    if (card.classList.contains("is-locked") || !card.dataset.game) {
+      SFX.init(); SFX.click();
+      card.classList.remove("nudge"); void card.offsetWidth; card.classList.add("nudge");
+      return;
+    }
     SFX.init(); SFX.click();
     if (card.dataset.game === "snake") {
       if (Storage.getLives() <= 0) {
@@ -55,6 +61,14 @@
       launchSnake();
     }
   });
+
+  // show how many games are playable vs. total in the hub
+  (function () {
+    var cards = document.querySelectorAll("#game-list .game-card");
+    var playable = document.querySelectorAll("#game-list .game-card[data-game]").length;
+    var el = $("game-count");
+    if (el) el.textContent = "あそべる " + playable + " / " + cards.length;
+  })();
 
   // ---------- settings ----------
   function openSettings() { syncSettingsUI(); $("settings-overlay").hidden = false; }
