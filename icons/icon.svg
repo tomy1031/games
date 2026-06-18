@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#1b2440"/><stop offset="1" stop-color="#0a0f1f"/>
+</linearGradient>
+<radialGradient id="head" cx="0.35" cy="0.35" r="0.7">
+<stop offset="0" stop-color="#9bffe9"/><stop offset="0.5" stop-color="#38e1c9"/><stop offset="1" stop-color="#6c8cff"/>
+</radialGradient>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<circle cx="256.0" cy="123.0" r="44.0" fill="url(#head)"/>
+<circle cx="313.8" cy="145.2" r="42.1" fill="rgb(66,239,215)"/>
+<circle cx="351.2" cy="167.3" r="40.2" fill="rgb(66,239,234)"/>
+<circle cx="355.2" cy="189.5" r="38.2" fill="rgb(66,225,239)"/>
+<circle cx="324.3" cy="211.7" r="36.3" fill="rgb(66,205,239)"/>
+<circle cx="269.3" cy="233.8" r="34.4" fill="rgb(66,186,239)"/>
+<circle cx="209.7" cy="256.0" r="32.5" fill="rgb(66,167,239)"/>
+<circle cx="166.4" cy="278.2" r="30.6" fill="rgb(66,148,239)"/>
+<circle cx="154.6" cy="300.3" r="28.7" fill="rgb(66,128,239)"/>
+<circle cx="178.4" cy="322.5" r="26.8" fill="rgb(66,109,239)"/>
+<circle cx="229.6" cy="344.7" r="24.8" fill="rgb(66,90,239)"/>
+<circle cx="290.0" cy="366.8" r="22.9" fill="rgb(66,71,239)"/>
+<circle cx="338.5" cy="389.0" r="21.0" fill="rgb(80,66,239)"/>
+<circle cx="269.0" cy="114.0" r="13" fill="#fff"/>
+<circle cx="273.0" cy="117.0" r="6" fill="#04122a"/>
+</svg>
