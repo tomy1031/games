@@ -5,15 +5,15 @@
   "use strict";
 
   // ---------- tunables ----------
-  var WORLD_R = 3900;
+  var WORLD_R = 5500;
   var BASE_SPEED = 2.8;
   var BOOST_MULT = 1.9;
-  var TURN_RATE = 0.16;
+  var TURN_RATE = 0.18;
   var START_MASS = 12;
   var MIN_MASS = 8;
-  var FOOD_TARGET = 1300;       // scattered background food kept around this many
-  var FOOD_CAP = 3200;          // hard ceiling incl. corpse drops (far pellets culled)
-  var TARGET_POP = 28;          // total snakes incl. player
+  var FOOD_TARGET = 2400;       // scattered background food kept around this many
+  var FOOD_CAP = 5200;          // hard ceiling incl. corpse drops (far pellets culled)
+  var TARGET_POP = 170;         // total snakes incl. player
   var CLAIM_MS = 5000;          // dropped kill-food reserved for the killer
   var MAX_SEGS = 280;
   var APEX_MIN = 24000;         // size of the biggest snakes on the board
@@ -39,6 +39,7 @@
   var dyingT = 0;
   var combo = 0, comboT = 0, stars = 0;
   var cb = {};
+  var frameCount = 0, aiFullR = 1600; // full-rate AI radius around the camera
   var lbAccum = 0, spawnQueue = [];
   var minimap, mmx;
 
@@ -69,8 +70,8 @@
       boosting: false, invUntil: performance.now() + 1600,
       shieldUntil: 0, magnetUntil: 0, speedUntil: 0,
       ai: { jitter: rand(0, 6.28), role: opts.isPlayer ? "player" : pickRole(),
-            goal: null, goalUntil: 0, target: null,
-            weaveAmp: rand(0.35, 0.75), weaveFreq: rand(340, 640),
+            goal: null, goalUntil: 0, foodTarget: null, foodAt: 0,
+            weaveAmp: rand(0.55, 1.15), weaveFreq: rand(220, 420),
             coilUntil: 0, coilDir: Math.random() < 0.5 ? -1 : 1 }
     };
     // Coiled start: every segment begins stacked at the head, then the body
@@ -121,7 +122,22 @@
     return { x: x, y: y, v: value || 1, r: 3 + (value || 1) * 0.7,
       hue: hue == null ? HUES[(Math.random() * HUES.length) | 0] : hue,
       claimedBy: claimed ? claimedBy : -1, claimUntil: claimed ? performance.now() + CLAIM_MS : 0,
-      vx: 0, vy: 0, ph: rand(0, 6.28) };
+      eaten: false, ph: rand(0, 6.28) };
+  }
+
+  // ---------- food spatial grid (keeps eat/seek cheap with many snakes) ----------
+  var GRID = 220, foodGrid = null;
+  function cellKey(x, y) { return (Math.floor(x / GRID) + 4096) * 8192 + (Math.floor(y / GRID) + 4096); }
+  function buildFoodGrid() {
+    foodGrid = new Map();
+    for (var i = 0; i < foods.length; i++) {
+      var f = foods[i];
+      if (f.eaten) continue;
+      var key = cellKey(f.x, f.y);
+      var arr = foodGrid.get(key);
+      if (!arr) { arr = []; foodGrid.set(key, arr); }
+      arr.push(f);
+    }
   }
   function scatterFood(n) {
     for (var i = 0; i < n; i++) {
@@ -175,18 +191,28 @@
         : clamp(rand(APEX_MIN, APEX_MAX) * Math.pow(0.72, k) * rand(0.8, 1.15), 12, APEX_MAX);
       spawnAI(m);
     }
-    cam.x = player.x; cam.y = player.y; cam.zoom = cam.targetZoom = 1;
+    cam.x = player.x; cam.y = player.y; cam.zoom = cam.targetZoom = 0.78;
   }
 
   // ---------- AI ----------
   function nearestEligibleFood(s) {
+    if (!foodGrid) return null;
     var best = null, bd = 1e9, now = performance.now();
-    var perc = 360 + s.thickness * 6;
-    for (var i = 0; i < foods.length; i++) {
-      var f = foods[i];
-      if (f.claimUntil > now && f.claimedBy !== s.id) continue; // anti-swarm: respect claims
-      var dx = f.x - s.x, dy = f.y - s.y, d = dx * dx + dy * dy;
-      if (d < bd && d < perc * perc) { bd = d; best = f; }
+    var perc = 360 + s.thickness * 6, perc2 = perc * perc;
+    var c0 = Math.floor((s.x - perc) / GRID), c1 = Math.floor((s.x + perc) / GRID);
+    var r0 = Math.floor((s.y - perc) / GRID), r1 = Math.floor((s.y + perc) / GRID);
+    for (var cx = c0; cx <= c1; cx++) {
+      for (var cy = r0; cy <= r1; cy++) {
+        var arr = foodGrid.get((cx + 4096) * 8192 + (cy + 4096));
+        if (!arr) continue;
+        for (var i = 0; i < arr.length; i++) {
+          var f = arr[i];
+          if (f.eaten) continue;
+          if (f.claimUntil > now && f.claimedBy !== s.id) continue; // anti-swarm: respect claims
+          var dx = f.x - s.x, dy = f.y - s.y, d = dx * dx + dy * dy;
+          if (d < bd && d < perc2) { bd = d; best = f; }
+        }
+      }
     }
     return best;
   }
@@ -271,14 +297,19 @@
       var g = s.ai.goal;
       if (hypot(g.x - s.x, g.y - s.y) < 200) { pickGoal(s, now); g = s.ai.goal; }
       desired = Math.atan2(g.y - s.y, g.x - s.x);
-      // graze food encountered en route
-      var f = nearestEligibleFood(s);
-      if (f && hypot(f.x - s.x, f.y - s.y) < 240) desired = Math.atan2(f.y - s.y, f.x - s.x);
+      // graze food encountered en route (target cached & refreshed on a timer so
+      // the per-frame cost stays low even with a very large snake population)
+      if (!s.ai.foodTarget || now > s.ai.foodAt) {
+        s.ai.foodTarget = nearestEligibleFood(s);
+        s.ai.foodAt = now + rand(500, 1100);
+      }
+      var f = s.ai.foodTarget;
+      if (f && hypot(f.x - s.x, f.y - s.y) < 260) desired = Math.atan2(f.y - s.y, f.x - s.x);
       // slithering weave (two waves) so the path curves instead of running straight
       desired += Math.sin(now / s.ai.weaveFreq + s.ai.jitter) * s.ai.weaveAmp
-               + Math.sin(now / (s.ai.weaveFreq * 2.3) + s.ai.jitter * 1.7) * (s.ai.weaveAmp * 0.5);
-      // occasionally start a coil
-      if (!nearWall && Math.random() < 0.004) { s.ai.coilUntil = now + rand(900, 2200); s.ai.coilDir = Math.random() < 0.5 ? -1 : 1; }
+               + Math.sin(now / (s.ai.weaveFreq * 2.3) + s.ai.jitter * 1.7) * (s.ai.weaveAmp * 0.55);
+      // occasionally start a coil (loops the body over itself)
+      if (!nearWall && Math.random() < 0.006) { s.ai.coilUntil = now + rand(900, 2400); s.ai.coilDir = Math.random() < 0.5 ? -1 : 1; }
       // hunters dash across the field in bursts
       s.boosting = s.ai.role === "hunter" && s.mass > 40 && Math.sin(now / 600 + s.id) > 0.6;
     }
@@ -290,7 +321,12 @@
   // ---------- physics ----------
   function stepSnake(s, now, dt) {
     if (s.dead) return;
-    if (!s.isPlayer) updateAI(s, now);
+    if (!s.isPlayer) {
+      // Snakes near the camera think every frame (smooth weaving on screen);
+      // far-away ones think less often to keep 170 snakes affordable on mobile.
+      var nearCam = hypot(s.x - cam.x, s.y - cam.y) < aiFullR;
+      if (nearCam || (frameCount + s.id) % 3 === 0) updateAI(s, now);
+    }
 
     var maxTurn = TURN_RATE * (1 + 8 / s.thickness);
     var d = angleDiff(s.targetAngle, s.angle);
@@ -328,23 +364,34 @@
   }
 
   function eatFood(s, now) {
+    if (!foodGrid) return;
     var head = s.segs[0];
     var eatR = s.thickness * 0.6 + 8;
-    var magnet = now < s.magnetUntil;
-    for (var i = foods.length - 1; i >= 0; i--) {
-      var f = foods[i];
-      var dx = head.x - f.x, dy = head.y - f.y, d = hypot(dx, dy);
-      if (magnet && d < 220) { f.x += dx / d * 5; f.y += dy / d * 5; }
-      if (d < eatR + f.r) {
-        s.mass += f.v;
-        foods.splice(i, 1);
-        if (s.isPlayer) {
-          burst(f.x, f.y, f.hue, 5, 3);
-          combo++; comboT = COMBO_WINDOW;
-          if (combo >= 3 && cb.onCombo) cb.onCombo(combo);
-          SFX.eat(combo);
-        } else {
-          burst(f.x, f.y, f.hue, 2, 2);
+    var magnet = s.isPlayer && now < s.magnetUntil;
+    var radius = magnet ? 260 : eatR + 8;
+    var c0 = Math.floor((head.x - radius) / GRID), c1 = Math.floor((head.x + radius) / GRID);
+    var r0 = Math.floor((head.y - radius) / GRID), r1 = Math.floor((head.y + radius) / GRID);
+    for (var cx = c0; cx <= c1; cx++) {
+      for (var cy = r0; cy <= r1; cy++) {
+        var arr = foodGrid.get((cx + 4096) * 8192 + (cy + 4096));
+        if (!arr) continue;
+        for (var i = 0; i < arr.length; i++) {
+          var f = arr[i];
+          if (f.eaten) continue;
+          var dx = head.x - f.x, dy = head.y - f.y, d = hypot(dx, dy);
+          if (magnet && d < 260 && d > 0.01) { f.x += dx / d * 5; f.y += dy / d * 5; }
+          if (d < eatR + f.r) {
+            f.eaten = true; // compacted out of `foods` once per frame
+            s.mass += f.v;
+            if (s.isPlayer) {
+              burst(f.x, f.y, f.hue, 5, 3);
+              combo++; comboT = COMBO_WINDOW;
+              if (combo >= 3 && cb.onCombo) cb.onCombo(combo);
+              SFX.eat(combo);
+            } else {
+              burst(f.x, f.y, f.hue, 2, 2);
+            }
+          }
         }
       }
     }
@@ -428,7 +475,10 @@
 
   // ---------- update ----------
   function update(now, dt) {
+    frameCount++;
+    aiFullR = hypot(cw, ch) / 2 / cam.zoom + 600;
     if (phase === "play") {
+      buildFoodGrid();
       for (var i = 0; i < snakes.length; i++) {
         var s = snakes[i];
         if (s.dead) continue;
@@ -453,6 +503,11 @@
 
       // cull dead snakes from list (after corpse dropped)
       for (var d = snakes.length - 1; d >= 0; d--) if (snakes[d].dead && snakes[d] !== player) snakes.splice(d, 1);
+
+      // drop the food eaten this frame in one pass (cheaper than per-eat splice)
+      var compact = false;
+      for (var ci = 0; ci < foods.length; ci++) if (foods[ci].eaten) { compact = true; break; }
+      if (compact) { var kept = []; for (var cj = 0; cj < foods.length; cj++) if (!foods[cj].eaten) kept.push(foods[cj]); foods = kept; }
 
       // replenish food & powerups
       if (foods.length < FOOD_TARGET) scatterFood(Math.random() < 0.5 ? 2 : 1);
@@ -490,7 +545,7 @@
       cam.x += (player.x - cam.x) * 0.12;
       cam.y += (player.y - cam.y) * 0.12;
     }
-    cam.targetZoom = phase === "play" ? clamp(1.05 - (player.mass - START_MASS) / 1400, 0.62, 1.05) : cam.targetZoom;
+    cam.targetZoom = phase === "play" ? clamp(0.78 - (player.mass - START_MASS) / 1500, 0.42, 0.78) : cam.targetZoom;
     cam.zoom += (cam.targetZoom - cam.zoom) * 0.05;
 
     // shake
@@ -573,7 +628,7 @@
   function drawFoods(now, vx0, vy0, vx1, vy1) {
     for (var i = 0; i < foods.length; i++) {
       var f = foods[i];
-      if (f.x < vx0 || f.x > vx1 || f.y < vy0 || f.y > vy1) continue;
+      if (f.eaten || f.x < vx0 || f.x > vx1 || f.y < vy0 || f.y > vy1) continue;
       var pulse = 1 + Math.sin(now / 300 + f.ph) * 0.18;
       ctx.fillStyle = colorFor(f.hue, 62);
       ctx.globalAlpha = 0.9;
