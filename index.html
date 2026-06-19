@@ -53,10 +53,19 @@
         </div>
       </button>
 
-      <div class="game-card is-locked" aria-disabled="true">
-        <div class="game-card-art art-1" aria-hidden="true"><span class="tile-emoji">🧱</span><span class="soon-badge">SOON</span></div>
-        <div class="game-card-body"><h3>ブロックスマッシュ</h3><p>準備中</p></div>
-      </div>
+      <button class="game-card featured" data-game="lumina">
+        <div class="game-card-art art-lumina" aria-hidden="true">
+          <span class="lum-core"></span><span class="lum-ring"></span>
+        </div>
+        <div class="game-card-body">
+          <h2>ルミナ・サバイバー</h2>
+          <p>常闇に呑まれた世界で、押し寄せる影を退け夜明けまで生き延びるサバイバー</p>
+          <div class="game-card-meta">
+            <span class="hi">BEST <b id="home-hi-lumina">0:00</b></span>
+            <span class="play-pill">▶ あそぶ</span>
+          </div>
+        </div>
+      </button>
 
       <div class="game-card is-locked" aria-disabled="true">
         <div class="game-card-art art-2" aria-hidden="true"><span class="tile-emoji">🟦</span><span class="soon-badge">SOON</span></div>
@@ -134,6 +143,69 @@
     <div class="countdown" id="countdown" hidden></div>
   </section>
 
+  <!-- ===================== Lumina Survivor screen ===================== -->
+  <section id="screen-lumina" class="screen">
+    <canvas id="lumina-canvas"></canvas>
+
+    <div class="lm-hud">
+      <!-- XP bar pinned to the very top -->
+      <div class="lm-xpbar"><i id="lm-xpfill"></i><b id="lm-level">Lv 1</b></div>
+
+      <div class="lm-top">
+        <button class="icon-btn ghost" id="lm-back" aria-label="戻る">‹</button>
+        <div class="lm-clock">
+          <div class="lm-time" id="lm-time">0:00</div>
+          <div class="lm-kills"><span id="lm-kills">0</span> 体撃破</div>
+        </div>
+        <button class="icon-btn ghost" id="lm-pause" aria-label="一時停止">⏸</button>
+      </div>
+
+      <div class="lm-weapons" id="lm-weapons"></div>
+
+      <div class="lm-hpwrap">
+        <div class="lm-hpbar"><i id="lm-hpfill"></i></div>
+        <span class="lm-hptext" id="lm-hptext">100 / 100</span>
+      </div>
+    </div>
+
+    <!-- Level-up overlay -->
+    <div class="overlay" id="lm-levelup" hidden>
+      <div class="panel lm-panel">
+        <h2>レベルアップ！</h2>
+        <p class="lm-sub">授かる力をえらぶ</p>
+        <div class="lm-choices" id="lm-choices"></div>
+      </div>
+    </div>
+
+    <!-- Pause overlay -->
+    <div class="overlay" id="lm-pause-overlay" hidden>
+      <div class="panel">
+        <h2>一時停止</h2>
+        <button class="btn primary" id="lm-resume">つづける</button>
+        <button class="btn" id="lm-quit">やめる</button>
+      </div>
+    </div>
+
+    <!-- Results overlay -->
+    <div class="overlay" id="lm-result" hidden>
+      <div class="panel">
+        <h2 id="lm-result-title">夜に呑まれた…</h2>
+        <div class="death-score">生存時間 <b id="lm-result-time">0:00</b></div>
+        <div class="lm-stats">
+          <span>到達 Lv <b id="lm-result-level">1</b></span>
+          <span><b id="lm-result-kills">0</b> 体撃破</span>
+        </div>
+        <div class="death-best" id="lm-result-best"></div>
+        <div class="death-hearts" id="lm-result-hearts"></div>
+        <button class="btn primary" id="lm-retry">❤ もう一度（ライフ -1）</button>
+        <button class="btn" id="lm-home">ホームへ</button>
+        <p class="death-note" id="lm-result-note"></p>
+      </div>
+    </div>
+
+    <div class="countdown" id="lm-countdown" hidden></div>
+  </section>
+
   <!-- ===================== Settings overlay ===================== -->
   <div class="overlay" id="settings-overlay" hidden>
     <div class="panel">
@@ -175,6 +247,7 @@
   <script src="js/storage.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/snake.js"></script>
+  <script src="js/lumina.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

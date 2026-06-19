@@ -143,6 +143,23 @@
       });
     },
     click: function () { tone({ type: "square", freq: 440, toFreq: 660, dur: 0.05, vol: 0.18 }); },
+
+    // ----- Lumina Survivor flavor -----
+    lumPick: function () { tone({ type: "triangle", freq: 720, toFreq: 1040, dur: 0.06, vol: 0.10 }); },
+    lumHurt: function () {
+      tone({ type: "sawtooth", freq: 200, toFreq: 80, dur: 0.22, vol: 0.3 });
+      noise({ filter: "lowpass", freq: 700, toFreq: 120, dur: 0.22, vol: 0.22 });
+    },
+    lumLevel: function () {
+      [0, 4, 7, 12, 16].forEach(function (s, i) {
+        tone({ type: "triangle", freq: noteFreq(s) * 2, dur: 0.18, vol: 0.26, delay: i * 0.05 });
+      });
+    },
+    lumNova: function () { noise({ filter: "bandpass", freq: 240, toFreq: 1600, dur: 0.3, vol: 0.16, q: 0.6 }); },
+    lumBoss: function () {
+      tone({ type: "sawtooth", freq: 110, toFreq: 55, dur: 0.9, vol: 0.32 });
+      tone({ type: "square", freq: 165, toFreq: 82, dur: 0.7, vol: 0.16, delay: 0.05 });
+    },
     countdown: function (go) {
       if (go) tone({ type: "square", freq: 880, toFreq: 1320, dur: 0.25, vol: 0.3 });
       else tone({ type: "square", freq: 440, dur: 0.12, vol: 0.22 });

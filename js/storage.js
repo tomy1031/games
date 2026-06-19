@@ -9,7 +9,8 @@
   var DEFAULTS = {
     lives: MAX_LIVES,
     lastLifeTs: Date.now(),
-    highScore: 0,
+    highScore: 0,        // legacy: snake's best (kept for backward compat)
+    scores: {},          // per-game best scores, keyed by game id
     plays: 0,
     settings: { sound: true, music: true, haptics: true, control: "follow" }
   };
@@ -90,10 +91,24 @@
       return state.lives;
     },
 
-    getHighScore: function () { return state.highScore || 0; },
-    submitScore: function (score) {
+    /* Best score for a game. With no id (or "snake") this returns the legacy
+       top-level highScore so older saves keep working; other games live in
+       the per-game `scores` map. */
+    getHighScore: function (game) {
+      if (!game || game === "snake") return state.highScore || 0;
+      return (state.scores && state.scores[game]) || 0;
+    },
+    submitScore: function (score, game) {
       state.plays = (state.plays || 0) + 1;
-      if (score > state.highScore) { state.highScore = score; save(); return true; }
+      var best;
+      if (!game || game === "snake") {
+        if (score > state.highScore) { state.highScore = score; save(); return true; }
+        save();
+        return false;
+      }
+      state.scores = state.scores || {};
+      best = state.scores[game] || 0;
+      if (score > best) { state.scores[game] = score; save(); return true; }
       save();
       return false;
     },
