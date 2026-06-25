@@ -332,7 +332,9 @@
     emitStats(); emitWeapons();
   }
 
-  function xpFor(lv) { return Math.floor(5 + lv * 3.4 + lv * lv * 0.55); }
+  // XP-to-next-level. Kept gentle so the level-up tempo stays brisk into the
+  // mid/late game (the old steep quadratic made progress crawl after ~Lv15).
+  function xpFor(lv) { return Math.floor(5 + lv * 4.2 + lv * lv * 0.30); }
   function addWeapon(key) { var w = { key: key, level: 1, cd: 0.4, orbA: rand(0, TAU) }; weapons[key] = w; return w; }
 
   function recompute() {
@@ -456,7 +458,10 @@
     if (e.boss) { bossKills++; bossAlive = Math.max(0, bossAlive - 1); if (bossAlive === 0 && cb.onBossEnd) cb.onBossEnd(); }
     burst(e.x, e.y, e.color, e.boss ? 38 : 9, e.boss ? 4 : 2);
     var gemN = e.boss ? 12 : 1, tier = e.boss ? 2 : (e.xp >= 5 ? 1 : 0);
-    for (var k = 0; k < gemN; k++) gems.push({ x: e.x + rand(-e.r, e.r), y: e.y + rand(-e.r, e.r), value: e.xp, tier: tier, vx: rand(-40, 40), vy: rand(-40, 40), att: false, t: 0 });
+    // tougher late-game enemies are worth proportionally more XP so income
+    // keeps up with the rising curve (steadier level-up tempo over a long run).
+    var gv = e.xp * (1 + minutes() * 0.08);
+    for (var k = 0; k < gemN; k++) gems.push({ x: e.x + rand(-e.r, e.r), y: e.y + rand(-e.r, e.r), value: gv, tier: tier, vx: rand(-40, 40), vy: rand(-40, 40), att: false, t: 0 });
     if (e.boss) { drops.push(mkDrop(e.x, e.y, "heart")); drops.push(mkDrop(e.x + 20, e.y, "magnet")); addShake(6); }
     else { var r = Math.random() - P.luck * 0.01; if (r < 0.012) drops.push(mkDrop(e.x, e.y, "heart")); else if (r < 0.02) drops.push(mkDrop(e.x, e.y, "magnet")); }
   }
@@ -758,6 +763,20 @@
     return weapons[wkey].level >= (def.maxLevel || WEAPON_MAX_LV) && (P.passives[def.evolveWith] || 0) >= (pd.maxLevel || PASSIVE_MAX_LV);
   }
 
+  // "How do I evolve this weapon?" — shown on the weapon's level-up card.
+  function weaponEvoHint(key) {
+    var d = WEAPONS[key]; if (!d || !d.evolvesTo || !d.evolveWith) return "";
+    var ed = WEAPONS[d.evolvesTo], pd = PASSIVES[d.evolveWith]; if (!ed || !pd) return "";
+    var cur = P.passives[d.evolveWith] || 0, mx = pd.maxLevel || PASSIVE_MAX_LV;
+    return "🔱進化→" + ed.name + "（武器MAX＋" + pd.name + " " + cur + "/" + mx + "）";
+  }
+  // On a passive's card, flag if it's the catalyst for an owned weapon's evolution.
+  function passiveEvoHint(key) {
+    var names = [];
+    for (var wk in weapons) { var d = WEAPONS[wk]; if (d && d.evolveWith === key && d.evolvesTo) names.push(d.name); }
+    return names.length ? "🔱" + names.join("・") + "の進化に必要" : "";
+  }
+
   function rollChoices() {
     var out = [], k;
     // evolutions first (high priority golden picks)
@@ -775,7 +794,8 @@
     var need = 3 - out.length;
     for (var n = 0; n < pool.length && n < need; n++) {
       var c = pool[n], meta = c.kind === "weapon" ? WEAPONS[c.key] : PASSIVES[c.key];
-      out.push({ id: c.id, icon: meta.icon, name: meta.name, desc: meta.desc, sub: c.isNew ? "NEW" : "Lv " + (c.level + 1), isNew: !!c.isNew });
+      var evo = c.kind === "weapon" ? weaponEvoHint(c.key) : passiveEvoHint(c.key);
+      out.push({ id: c.id, icon: meta.icon, name: meta.name, desc: meta.desc, sub: c.isNew ? "NEW" : "Lv " + (c.level + 1), isNew: !!c.isNew, evo: evo });
     }
     if (!out.length) out.push({ id: "heal", icon: "❤", name: "癒やしの光", desc: "HPを40%回復", sub: "" });
     return out;
