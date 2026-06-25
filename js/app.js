@@ -323,7 +323,9 @@
       btn.className = "lm-choice" + (c.isEvolve ? " is-evolve" : (c.isNew ? " is-new" : ""));
       btn.innerHTML = '<span class="lm-choice-ic">' + c.icon + '</span>' +
         '<span class="lm-choice-tx"><b>' + escapeHtml(c.name) + '</b>' +
-        '<i>' + escapeHtml(c.desc) + '</i></span>' +
+        '<i>' + escapeHtml(c.desc) + '</i>' +
+        (c.evo ? '<em class="lm-choice-evo">' + escapeHtml(c.evo) + '</em>' : '') +
+        '</span>' +
         '<span class="lm-choice-lv">' + escapeHtml(c.sub) + '</span>';
       btn.addEventListener("click", function () {
         SFX.click(); vibrate(c.isEvolve ? [20, 30, 40] : 15);
