@@ -206,6 +206,28 @@
     <div class="countdown" id="lm-countdown" hidden></div>
   </section>
 
+  <!-- ===================== Lumina: character select ===================== -->
+  <section id="screen-charsel" class="screen lm-select">
+    <div class="bg-dots" aria-hidden="true"></div>
+    <header class="lm-sel-top">
+      <button class="icon-btn ghost" id="charsel-back" aria-label="戻る">‹</button>
+      <div class="lm-sel-title"><h2>守人をえらぶ</h2><p>キャラクターごとに性能が異なる</p></div>
+      <span class="lm-sel-spacer"></span>
+    </header>
+    <div class="lm-sel-grid" id="charsel-grid"></div>
+  </section>
+
+  <!-- ===================== Lumina: stage select ===================== -->
+  <section id="screen-stagesel" class="screen lm-select">
+    <div class="bg-dots" aria-hidden="true"></div>
+    <header class="lm-sel-top">
+      <button class="icon-btn ghost" id="stagesel-back" aria-label="戻る">‹</button>
+      <div class="lm-sel-title"><h2>ステージをえらぶ</h2><p id="stagesel-sub">挑む夜を選択</p></div>
+      <span class="lm-sel-spacer"></span>
+    </header>
+    <div class="lm-sel-grid" id="stagesel-grid"></div>
+  </section>
+
   <!-- ===================== Settings overlay ===================== -->
   <div class="overlay" id="settings-overlay" hidden>
     <div class="panel">
@@ -247,6 +269,9 @@
   <script src="js/storage.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/snake.js"></script>
+  <script src="js/lumina-weapons.js"></script>
+  <script src="js/lumina-chars.js"></script>
+  <script src="js/lumina-stages.js"></script>
   <script src="js/lumina.js"></script>
   <script src="js/app.js"></script>
 </body>
