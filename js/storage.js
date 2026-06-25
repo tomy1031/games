@@ -12,6 +12,8 @@
     highScore: 0,        // legacy: snake's best (kept for backward compat)
     scores: {},          // per-game best scores, keyed by game id
     plays: 0,
+    // Lumina Survivor progression (for character/stage unlocks)
+    lumina: { totalKills: 0, totalBosses: 0, maxLevel: 0, plays: 0, cleared: {}, bestByStage: {} },
     settings: { sound: true, music: true, haptics: true, control: "follow" }
   };
 
@@ -24,6 +26,9 @@
       var s = clone(DEFAULTS);
       for (var k in d) if (d.hasOwnProperty(k)) s[k] = d[k];
       s.settings = Object.assign({}, DEFAULTS.settings, d.settings || {});
+      s.lumina = Object.assign({}, DEFAULTS.lumina, d.lumina || {});
+      s.lumina.cleared = Object.assign({}, d.lumina && d.lumina.cleared);
+      s.lumina.bestByStage = Object.assign({}, d.lumina && d.lumina.bestByStage);
       return s;
     } catch (e) {
       return clone(DEFAULTS);
@@ -111,6 +116,35 @@
       if (score > best) { state.scores[game] = score; save(); return true; }
       save();
       return false;
+    },
+
+    // ----- Lumina Survivor progression -----
+    getLumina: function () { return clone(state.lumina); },
+    recordLuminaRun: function (res) {
+      var L = state.lumina;
+      L.totalKills += res.kills || 0;
+      L.totalBosses += res.bosses || 0;
+      L.maxLevel = Math.max(L.maxLevel || 0, res.level || 0);
+      L.plays = (L.plays || 0) + 1;
+      if (res.stage) {
+        L.bestByStage[res.stage] = Math.max(L.bestByStage[res.stage] || 0, res.time || 0);
+        if (res.cleared) L.cleared[res.stage] = true;
+      }
+      save();
+    },
+    /* Evaluate an unlock descriptor against current progression. */
+    luminaUnlocked: function (unlock) {
+      if (!unlock || unlock.type === "default") return true;
+      var L = state.lumina;
+      switch (unlock.type) {
+        case "kills": return (L.totalKills || 0) >= unlock.n;
+        case "bosses": return (L.totalBosses || 0) >= unlock.n;
+        case "level": return (L.maxLevel || 0) >= unlock.n;
+        case "time": return (this.getHighScore("lumina")) >= unlock.sec;
+        case "clear": return !!(L.cleared && L.cleared[unlock.stage]);
+        case "plays": return (L.plays || 0) >= unlock.n;
+        default: return true;
+      }
     },
 
     getSettings: function () { return Object.assign({}, state.settings); },

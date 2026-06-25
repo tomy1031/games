@@ -8,7 +8,10 @@
   SFX.setSettings(settings);
 
   // ---------- screen routing ----------
-  var screens = { home: $("screen-home"), snake: $("screen-snake"), lumina: $("screen-lumina") };
+  var screens = {
+    home: $("screen-home"), snake: $("screen-snake"), lumina: $("screen-lumina"),
+    charsel: $("screen-charsel"), stagesel: $("screen-stagesel")
+  };
   var current = "home";
   function show(name) {
     if (screens[current]) screens[current].classList.remove("is-active");
@@ -64,7 +67,7 @@
       return;
     }
     if (card.dataset.game === "snake") launchSnake();
-    else if (card.dataset.game === "lumina") launchLumina();
+    else if (card.dataset.game === "lumina") openCharSelect();
   });
 
   // show how many games are playable vs. total in the hub
@@ -205,6 +208,93 @@
   //  Lumina Survivor wiring
   // ====================================================================
   var lmWeaponsEl = $("lm-weapons");
+  var lmChar = null, lmStage = null, lmStageTheme = "stage1";
+
+  // ---- character select ----
+  function statBadges(stats) {
+    stats = stats || {};
+    var defs = [
+      { k: "hpMul", base: 1, label: "HP" }, { k: "dmgMul", base: 1, label: "攻" },
+      { k: "speedMul", base: 1, label: "速" }, { k: "cdMul", base: 1, label: "連射", inv: true },
+      { k: "areaMul", base: 1, label: "範" }, { k: "xpMul", base: 1, label: "経験" },
+      { k: "magnetMul", base: 1, label: "引" }, { k: "armor", base: 0, label: "防", flat: true },
+      { k: "crit", base: 0, label: "会心", flat: true }
+    ];
+    var html = "";
+    for (var i = 0; i < defs.length; i++) {
+      var d = defs[i], v = stats[d.k]; if (v == null) continue;
+      var up, txt;
+      if (d.flat) { if (!v) continue; up = v > 0; txt = d.label + " +" + Math.round(v * 100) + "%"; }
+      else {
+        if (Math.abs(v - d.base) < 0.001) continue;
+        var pct = Math.round((v - 1) * 100), good = d.inv ? pct < 0 : pct > 0;
+        up = good; txt = d.label + " " + (pct > 0 ? "+" : "") + pct + "%";
+      }
+      html += '<span class="lm-badge ' + (up ? "up" : "dn") + '">' + txt + '</span>';
+    }
+    return html || '<span class="lm-badge">バランス型</span>';
+  }
+
+  function openCharSelect() { renderCharSelect(); show("charsel"); }
+  function renderCharSelect() {
+    var grid = $("charsel-grid"); grid.innerHTML = "";
+    var chars = LuminaGame.getCharacters();
+    chars.forEach(function (c) {
+      var unlocked = Storage.luminaUnlocked(c.unlock);
+      var card = document.createElement("button");
+      card.className = "lm-cc" + (unlocked ? "" : " locked");
+      var inner = '<div class="lm-cc-ic" style="color:' + c.color + '">' + (c.icon || "🌟") + '</div>' +
+        '<h3>' + escapeHtml(c.name) + '</h3>' +
+        '<div class="lm-cc-title">' + escapeHtml(c.title || "") + '</div>' +
+        '<p class="lm-cc-desc">' + escapeHtml(c.desc || "") + '</p>' +
+        '<div class="lm-cc-stats">' + statBadges(c.stats) + '</div>';
+      if (!unlocked) inner += '<div class="lm-lock"><span class="lk">🔒</span><span class="hint">' + escapeHtml(c.unlockHint || "条件を満たすと解放") + '</span></div>';
+      card.innerHTML = inner;
+      card.addEventListener("click", function () {
+        SFX.init(); SFX.click();
+        if (!unlocked) { card.classList.remove("nudge"); void card.offsetWidth; card.classList.add("nudge"); return; }
+        lmChar = c; openStageSelect();
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  // ---- stage select ----
+  function openStageSelect() { renderStageSelect(); show("stagesel"); }
+  function renderStageSelect() {
+    $("stagesel-sub").textContent = lmChar ? (lmChar.name + " で挑む夜を選択") : "挑む夜を選択";
+    var grid = $("stagesel-grid"); grid.innerHTML = "";
+    var stages = LuminaGame.getStages();
+    var L = Storage.getLumina();
+    stages.forEach(function (s) {
+      var unlocked = Storage.luminaUnlocked(s.unlock);
+      var best = (L.bestByStage && L.bestByStage[s.key]) || 0;
+      var cleared = !!(L.cleared && L.cleared[s.key]);
+      var card = document.createElement("button");
+      card.className = "lm-sc" + (unlocked ? "" : " locked");
+      var inner = '<div class="lm-sc-inner">' +
+        '<div class="lm-sc-ic">' + (s.icon || "🌙") + '</div>' +
+        '<h3>' + escapeHtml(s.name) + (cleared ? " ✓" : "") + '</h3>' +
+        '<p class="lm-sc-desc">' + escapeHtml(s.desc || "") + '</p>' +
+        '<div class="lm-sc-best">' + (best > 0 ? "自己ベスト " + fmtClock(best) : '<span class="lm-sc-no">未挑戦</span>') + '</div>' +
+        '</div>';
+      if (!unlocked) inner += '<div class="lm-lock"><span class="lk">🔒</span><span class="hint">' + escapeHtml(s.unlockHint || "前のステージをクリアで解放") + '</span></div>';
+      card.innerHTML = inner;
+      card.addEventListener("click", function () {
+        SFX.init(); SFX.click();
+        if (!unlocked) { card.classList.remove("nudge"); void card.offsetWidth; card.classList.add("nudge"); return; }
+        if (Storage.getLives() <= 0) { alert("ライフがありません。少し待つと回復します。"); return; }
+        lmStage = s; lmStageTheme = s.theme || "stage1";
+        launchLumina();
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  $("charsel-back").addEventListener("click", function () { SFX.click(); show("home"); refreshLives(); });
+  $("stagesel-back").addEventListener("click", function () { SFX.click(); openCharSelect(); });
+
+  // ---- in-game HUD ----
   function lmUpdateStats(s) {
     $("lm-time").textContent = fmtClock(s.time);
     $("lm-kills").textContent = s.kills;
@@ -215,12 +305,12 @@
     $("lm-hpfill").style.background = hpPct < 30
       ? "linear-gradient(90deg,#ff5d7a,#ff9a3d)"
       : "linear-gradient(90deg,#38e1c9,#6c8cff)";
-    $("lm-hptext").textContent = Math.ceil(s.hp) + " / " + s.hpMax;
+    $("lm-hptext").textContent = Math.ceil(s.hp) + " / " + Math.round(s.hpMax);
   }
   function lmUpdateWeapons(list) {
     var html = "";
     for (var i = 0; i < list.length; i++) {
-      html += '<span class="lm-wchip" title="' + escapeHtml(list[i].name) + '">' +
+      html += '<span class="lm-wchip' + (list[i].evolved ? " evolved" : "") + '" title="' + escapeHtml(list[i].name) + '">' +
         '<b>' + list[i].icon + '</b><i>' + list[i].level + '</i></span>';
     }
     lmWeaponsEl.innerHTML = html;
@@ -230,13 +320,13 @@
     box.innerHTML = "";
     choices.forEach(function (c) {
       var btn = document.createElement("button");
-      btn.className = "lm-choice" + (c.isNew ? " is-new" : "");
+      btn.className = "lm-choice" + (c.isEvolve ? " is-evolve" : (c.isNew ? " is-new" : ""));
       btn.innerHTML = '<span class="lm-choice-ic">' + c.icon + '</span>' +
         '<span class="lm-choice-tx"><b>' + escapeHtml(c.name) + '</b>' +
         '<i>' + escapeHtml(c.desc) + '</i></span>' +
         '<span class="lm-choice-lv">' + escapeHtml(c.sub) + '</span>';
       btn.addEventListener("click", function () {
-        SFX.click(); vibrate(15);
+        SFX.click(); vibrate(c.isEvolve ? [20, 30, 40] : 15);
         $("lm-levelup").hidden = true;
         pick(c.id);
       });
@@ -245,16 +335,28 @@
     $("lm-levelup").hidden = false;
   }
 
+  function lmToast(msg) {
+    var screen = $("screen-lumina");
+    var old = screen.querySelector(".lm-flash-toast"); if (old) old.remove();
+    var t = document.createElement("div"); t.className = "lm-flash-toast"; t.textContent = msg;
+    screen.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.remove(); }, 2700);
+  }
+
   function launchLumina() {
     show("lumina");
-    if (settings.music) SFX.startMusic();
+    if (settings.music) SFX.startMusic(lmStageTheme);
     runCountdown(function () {
       LuminaGame.start($("lumina-canvas"), {
+        character: lmChar && lmChar.key,
+        stage: lmStage && lmStage.key,
         onStats: lmUpdateStats,
         onWeapons: lmUpdateWeapons,
         onLevelUp: lmShowLevelUp,
         onHurt: function () { vibrate(40); },
-        onBoss: function () { vibrate([30, 50, 30]); },
+        onBoss: function () { vibrate([30, 50, 30]); if (settings.music) SFX.setMusicTrack("boss"); },
+        onBossEnd: function () { if (settings.music) SFX.setMusicTrack(lmStageTheme); },
+        onClear: function () { lmToast("🌅 " + (lmStage ? lmStage.name : "ステージ") + " 制覇！"); vibrate([30, 40, 30, 40]); },
         onGameOver: function (res) { lmEndGame(res); }
       });
       startLifeTicker();
@@ -262,11 +364,13 @@
   }
 
   function lmEndGame(res) {
+    var before = unlockedNames();
     var isBest = Storage.submitScore(res.time, "lumina");
+    Storage.recordLuminaRun(res);
     Storage.spendLife();
     SFX.stopMusic();
     var lives = Storage.getLives();
-    $("lm-result-title").textContent = "夜に呑まれた…";
+    $("lm-result-title").textContent = res.cleared ? "🌅 夜明けへ" : "夜に呑まれた…";
     $("lm-result-time").textContent = fmtClock(res.time);
     $("lm-result-level").textContent = res.level;
     $("lm-result-kills").textContent = res.kills;
@@ -275,14 +379,23 @@
     var retry = $("lm-retry");
     if (lives > 0) {
       retry.disabled = false; retry.textContent = "❤ もう一度（ライフ -1）";
-      $("lm-result-note").textContent = "";
     } else {
       retry.disabled = true; retry.textContent = "ライフ切れ";
-      $("lm-result-note").textContent = "回復まで " + fmtTime(Storage.nextLifeIn());
     }
+    // surface anything newly unlocked by this run
+    var newly = unlockedNames().filter(function (n) { return before.indexOf(n) < 0; });
+    if (newly.length) $("lm-result-note").textContent = "🔓 解放: " + newly.join("、");
+    else if (lives <= 0) $("lm-result-note").textContent = "回復まで " + fmtTime(Storage.nextLifeIn());
+    else $("lm-result-note").textContent = "";
     vibrate([40, 60, 40]);
     $("lm-result").hidden = false;
     refreshLives();
+  }
+  function unlockedNames() {
+    var names = [];
+    LuminaGame.getCharacters().forEach(function (c) { if (Storage.luminaUnlocked(c.unlock)) names.push(c.name); });
+    LuminaGame.getStages().forEach(function (s) { if (Storage.luminaUnlocked(s.unlock)) names.push(s.name); });
+    return names;
   }
 
   $("lm-retry").addEventListener("click", function () {
@@ -304,7 +417,7 @@
   $("lm-back").addEventListener("click", lmPause);
   $("lm-resume").addEventListener("click", function () {
     SFX.click(); $("lm-pause-overlay").hidden = true; LuminaGame.resume();
-    if (settings.music) SFX.startMusic();
+    if (settings.music) SFX.startMusic(lmStageTheme);
   });
   $("lm-quit").addEventListener("click", function () {
     SFX.click(); LuminaGame.stop(); SFX.stopMusic();

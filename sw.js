@@ -1,5 +1,5 @@
 /* Service worker: cache-first offline support for the whole app shell. */
-var CACHE = "pocket-arcade-v7";
+var CACHE = "pocket-arcade-v8";
 var ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,9 @@ var ASSETS = [
   "./js/storage.js",
   "./js/audio.js",
   "./js/snake.js",
+  "./js/lumina-weapons.js",
+  "./js/lumina-chars.js",
+  "./js/lumina-stages.js",
   "./js/lumina.js",
   "./js/app.js",
   "./icons/icon.svg",
