@@ -75,9 +75,11 @@
             coilUntil: 0, coilDir: Math.random() < 0.5 ? -1 : 1 }
     };
     // Coiled start: every segment begins stacked at the head, then the body
-    // uncoils/extends outward as the snake moves.
+    // uncoils/extends outward along the head's travelled path as it moves.
     var n = segCountOf(mass);
     for (var i = 0; i < n; i++) s.segs.push({ x: opts.x, y: opts.y });
+    s.path = [{ x: opts.x, y: opts.y }]; // head trail (oldest first, newest last)
+    s.pathX = opts.x; s.pathY = opts.y;  // last point committed to the trail
     return s;
   }
 
@@ -147,13 +149,14 @@
   }
   function dropCorpse(s, claimerId) {
     var n = s.segs.length;
-    // cap total drops (~50) so a giant doesn't flood the field, and scatter
-    // each pellet widely so the loot spreads out instead of piling up.
-    var step = Math.max(2, Math.ceil(n / 50));
+    // Drop pellets ALONG the body so the loot traces the snake's shape. Jitter
+    // stays within the body width so the outline is preserved; where the body
+    // overlapped itself (coils/turns) pellets naturally pile up denser.
+    var step = Math.max(1, Math.ceil(n / 150)); // up to ~150 pellets, dense
+    var jit = Math.max(3, s.thickness * 0.35);
     for (var i = 0; i < n; i += step) {
       var seg = s.segs[i];
-      var spread = 50 + s.thickness * 2.2;
-      foods.push(makeFood(seg.x + rand(-spread, spread), seg.y + rand(-spread, spread),
+      foods.push(makeFood(seg.x + rand(-jit, jit), seg.y + rand(-jit, jit),
         2 + Math.random() * 3, s.hue, claimerId));
     }
   }
@@ -354,13 +357,43 @@
     while (s.segs.length < want) { var last = s.segs[s.segs.length - 1]; s.segs.push({ x: last.x, y: last.y }); }
     while (s.segs.length > want) s.segs.pop();
 
-    // chain follow
-    s.segs[0].x = s.x; s.segs[0].y = s.y;
-    for (var i = 1; i < s.segs.length; i++) {
-      var a = s.segs[i - 1], b = s.segs[i];
-      var dx = a.x - b.x, dy = a.y - b.y, dist = hypot(dx, dy);
-      if (dist > s.gap) { var t = (dist - s.gap) / dist; b.x += dx * t; b.y += dy * t; }
+    updateBody(s);
+  }
+
+  // Place body segments at fixed arc-length intervals along the head's actual
+  // travelled path. This makes the tail follow precisely even when circling in
+  // place (no corner-cutting / bunching), and uncoils a stacked spawn naturally.
+  function updateBody(s) {
+    var path = s.path, gap = s.gap, n = s.segs.length;
+    var hx = s.x, hy = s.y;
+    // commit a new trail point only when the head has moved enough (keeps the
+    // trail short/cheap while staying smooth); resolution scales with the body.
+    var res = gap * 0.5; if (res < 2) res = 2;
+    if ((hx - s.pathX) * (hx - s.pathX) + (hy - s.pathY) * (hy - s.pathY) >= res * res) {
+      path.push({ x: hx, y: hy }); s.pathX = hx; s.pathY = hy;
     }
+    s.segs[0].x = hx; s.segs[0].y = hy;
+    // walk backwards from the head, dropping a segment every `gap` of arc length
+    var segIdx = 1, target = gap, acc = 0;
+    var px = hx, py = hy, pi = path.length - 1, stop = pi;
+    while (segIdx < n && pi >= 0) {
+      var p = path[pi];
+      var dx = p.x - px, dy = p.y - py, seg = Math.sqrt(dx * dx + dy * dy);
+      if (seg > 1e-6) {
+        while (target <= acc + seg && segIdx < n) {
+          var f = (target - acc) / seg;
+          s.segs[segIdx].x = px + dx * f;
+          s.segs[segIdx].y = py + dy * f;
+          segIdx++; target += gap;
+        }
+        acc += seg;
+      }
+      px = p.x; py = p.y; stop = pi; pi--;
+    }
+    // not enough trail yet (fresh/coiled spawn): collapse the rest onto the oldest point
+    for (; segIdx < n; segIdx++) { s.segs[segIdx].x = px; s.segs[segIdx].y = py; }
+    // drop trail points older than the tail (amortised; keeps memory bounded)
+    if (stop > 96) s.path = path.slice(stop - 1);
   }
 
   function eatFood(s, now) {
@@ -810,6 +843,7 @@
       player.segs = [];
       var n = segCountOf(START_MASS);
       for (var i = 0; i < n; i++) player.segs.push({ x: p.x, y: p.y });
+      player.path = [{ x: p.x, y: p.y }]; player.pathX = p.x; player.pathY = p.y;
       cam.x = p.x; cam.y = p.y;
       combo = 0; comboT = 0;
       phase = "play"; paused = false; running = true; lastT = 0;
